@@ -1,0 +1,198 @@
+name: Native release
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Qualify this ref, or build a release draft from a version tag
+        type: choice
+        required: true
+        default: qualify
+        options:
+          - qualify
+          - build
+  pull_request:
+    paths:
+      - 'toolchain/**'
+      - 'scripts/**'
+      - '.github/workflows/native-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: native-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+env:
+  OPERATION: ${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'qualify' }}
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.6'
+          cache: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Require the reviewed unpublished version tag
+        if: env.OPERATION == 'build'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release_provenance.py preflight
+      - run: ./task check
+      - run: ./task test
+
+  compile:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-24.04
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: Compile in the pinned glibc 2.35 image
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: python3 toolchain/build.py build --platform "$PLATFORM" --output "$RUNNER_TEMP/build" --cache "$RUNNER_TEMP/sources" --jobs 4
+      - name: Record build evidence
+        if: env.OPERATION == 'build'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          image="$(python3 toolchain/build.py identity | python3 -c 'import json, sys; print(json.load(sys.stdin)["image"])')"
+          python3 scripts/release_provenance.py build-evidence --platform "$PLATFORM" --build-directory "$RUNNER_TEMP/build/out" \
+            --image "$image" --output "$RUNNER_TEMP/build/out/build-evidence-$PLATFORM.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: compiled-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/build/out/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  verify:
+    needs: compile
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-24.04
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: compiled-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/incoming
+      - name: Check build evidence against the downloaded files
+        if: env.OPERATION == 'build'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: python3 scripts/release_provenance.py check-evidence --platform "$PLATFORM" --evidence "$RUNNER_TEMP/incoming/build-evidence-$PLATFORM.json" --build-directory "$RUNNER_TEMP/incoming"
+      - name: Qualify on a fresh runner in every distribution family
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          identity="$(python3 toolchain/build.py identity)"
+          version="$(printf '%s' "$identity" | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          release_tag="$(printf '%s' "$identity" | python3 -c 'import json, sys; print(json.load(sys.stdin)["tag"])')"
+          python3 scripts/qualify.py verify --platform "$PLATFORM" \
+            --archive "$RUNNER_TEMP/incoming/paintedwolf-git-$version-$PLATFORM.tar.gz" \
+            --platform-checks "$RUNNER_TEMP/incoming/platform-checks-$PLATFORM.json" \
+            --output "$RUNNER_TEMP/incoming/qualification-$PLATFORM.json"
+          mkdir "$RUNNER_TEMP/handoff"
+          python3 scripts/release.py pack --platform "$PLATFORM" --build "$RUNNER_TEMP/incoming" --tag "$release_tag" \
+            --output "$RUNNER_TEMP/handoff/release"
+          if [ "$OPERATION" = build ]; then
+            cp "$RUNNER_TEMP/incoming/build-evidence-$PLATFORM.json" "$RUNNER_TEMP/handoff/"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/handoff
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'build'
+    needs: verify
+    environment: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verified-linux-amd64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/linux-amd64
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verified-linux-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/linux-arm64
+      - name: Recheck the reviewed source and build identity, and combine the platforms
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_provenance.py preflight
+          for platform in linux-amd64 linux-arm64; do
+            python3 scripts/release_provenance.py check-evidence --platform "$platform" \
+              --evidence "$RUNNER_TEMP/$platform/build-evidence-$platform.json" --build-directory "$RUNNER_TEMP/$platform/release"
+          done
+          python3 scripts/release.py merge "$RUNNER_TEMP/linux-amd64/release" "$RUNNER_TEMP/linux-arm64/release" --output "$RUNNER_TEMP/release"
+          cp "$RUNNER_TEMP"/linux-*/build-evidence-*.json "$RUNNER_TEMP/release/"
+      - name: Attest the verified archives, source, descriptor and evidence
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/*.tar.gz
+            ${{ runner.temp }}/release/*.json
+          create-storage-record: false
+      - name: Create and verify a complete draft for human publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          cp "$ATTESTATION_BUNDLE" "$RUNNER_TEMP/release/provenance.sigstore.json"
+          python3 scripts/promote.py "$RUNNER_TEMP/release"

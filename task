@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Runs the pinned Task version from .bin/, installing it on first use.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+exec "${ROOT}/scripts/task.sh" "$@"
