@@ -1,0 +1,23 @@
+version: '3'
+tasks:
+  check:
+    desc: Validate the source lock and release inputs offline
+    cmds:
+      - python3 toolchain/build.py check
+      - python3 scripts/release.py check-inputs
+  test:
+    desc: Run the tooling regression tests
+    cmds:
+      - python3 -m unittest discover -s tests
+  build:
+    desc: Build a toolchain archive in the pinned image (Linux, native architecture)
+    cmds:
+      - python3 toolchain/build.py build {{.CLI_ARGS}}
+  qualify:
+    desc: Inspect a tree, or qualify an archive in every distribution family
+    cmds:
+      - python3 scripts/qualify.py {{.CLI_ARGS}}
+  release-pack:
+    desc: Package a qualified platform build, or merge platform outputs
+    cmds:
+      - python3 scripts/release.py {{.CLI_ARGS}}

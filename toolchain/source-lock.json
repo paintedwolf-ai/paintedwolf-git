@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "name": "paintedwolf-git",
+  "git_version": "2.53.0",
+  "lfs_version": "3.7.1",
+  "revision": 1,
+  "glibc_max": "2.35",
+  "build_image": "ubuntu:22.04@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401",
+  "platforms": {
+    "linux-amd64": {"machine": "x86_64", "openssl_target": "linux-x86_64", "interpreter": "/lib64/ld-linux-x86-64.so.2"},
+    "linux-arm64": {"machine": "aarch64", "openssl_target": "linux-aarch64", "interpreter": "/lib/ld-linux-aarch64.so.1"}
+  },
+  "sources": {
+    "git": {
+      "version": "2.53.0",
+      "url": "https://www.kernel.org/pub/software/scm/git/git-2.53.0.tar.xz",
+      "sha256": "5818bd7d80b061bbbdfec8a433d609dc8818a05991f731ffc4a561e2ca18c653",
+      "checksum_source": "https://www.kernel.org/pub/software/scm/git/sha256sums.asc",
+      "root": "git-2.53.0",
+      "license": "GPL-2.0-only",
+      "license_files": ["COPYING", "LGPL-2.1"]
+    },
+    "git-lfs": {
+      "version": "3.7.1",
+      "url": "https://github.com/git-lfs/git-lfs/releases/download/v3.7.1/git-lfs-v3.7.1.tar.gz",
+      "sha256": "8f56058622edfea1d111e50e9844ef2f5ce670b2dbe4d55d48e765c943af4351",
+      "checksum_source": "https://github.com/git-lfs/git-lfs/releases/download/v3.7.1/sha256sums.asc",
+      "commit": "b84b33847fe6458f36ef521534dc0eac953cb379",
+      "root": "git-lfs-3.7.1",
+      "license": "MIT",
+      "license_files": ["LICENSE.md"],
+      "vendor_modules_sha256": "bcccf4511203aeb2d13d4437193017849de74c2485147378e74bc30333c9f1ac"
+    },
+    "curl": {
+      "version": "8.23.0",
+      "url": "https://curl.se/download/curl-8.23.0.tar.xz",
+      "sha256": "8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5",
+      "checksum_source": "https://curl.se/download/curl-8.23.0.tar.xz.asc (Daniel Stenberg, 27EDEAF22F3ABCEB50DB9A125CC908FDB71E12C2)",
+      "root": "curl-8.23.0",
+      "license": "curl",
+      "license_files": ["COPYING"]
+    },
+    "openssl": {
+      "version": "3.5.9",
+      "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+      "sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+      "checksum_source": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz.sha256",
+      "root": "openssl-3.5.9",
+      "license": "Apache-2.0",
+      "license_files": ["LICENSE.txt"]
+    },
+    "zlib": {
+      "version": "1.3.2",
+      "url": "https://zlib.net/zlib-1.3.2.tar.xz",
+      "sha256": "d7a0654783a4da529d1bb793b7ad9c3318020af77667bcae35f95d0e42a792f3",
+      "checksum_source": "https://zlib.net/zlib-1.3.2.tar.xz.asc (Mark Adler, 5ED46A6721D365587791E2AA783FCD8E58BCAFBA)",
+      "root": "zlib-1.3.2",
+      "license": "Zlib",
+      "license_files": ["LICENSE"]
+    }
+  },
+  "tools": {
+    "go": {
+      "version": "1.26.9",
+      "license": "BSD-3-Clause",
+      "license_files": ["LICENSE", "PATENTS"],
+      "root": "go",
+      "archives": {
+        "linux-amd64": {"url": "https://go.dev/dl/go1.26.9.linux-amd64.tar.gz", "sha256": "42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d"},
+        "linux-arm64": {"url": "https://go.dev/dl/go1.26.9.linux-arm64.tar.gz", "sha256": "4a97373d49fcacdcf3694fea368a500b00ee3e963974f3e7514132717632f052"}
+      },
+      "proxy": "https://proxy.golang.org",
+      "sumdb": "sum.golang.org"
+    }
+  },
+  "qualification": {
+    "families": [
+      {"name": "ubuntu-22.04", "image": "ubuntu:22.04", "platforms": ["linux-amd64", "linux-arm64"], "prepare": "apt"},
+      {"name": "ubuntu-24.04", "image": "ubuntu:24.04", "platforms": ["linux-amd64", "linux-arm64"], "prepare": "apt"},
+      {"name": "debian-13", "image": "debian:13", "platforms": ["linux-amd64", "linux-arm64"], "prepare": "apt"},
+      {"name": "fedora-44", "image": "fedora:44", "platforms": ["linux-amd64", "linux-arm64"], "prepare": null},
+      {"name": "almalinux-10", "image": "almalinux:10", "platforms": ["linux-amd64", "linux-arm64"], "prepare": null},
+      {"name": "arch", "image": "archlinux:latest", "platforms": ["linux-amd64"], "prepare": null}
+    ],
+    "https_remote": "https://github.com/git/git.git",
+    "https_ref": "refs/tags/v2.53.0",
+    "clone_remote": "https://github.com/octocat/Hello-World.git"
+  }
+}
